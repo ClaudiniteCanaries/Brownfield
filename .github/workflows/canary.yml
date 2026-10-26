@@ -150,6 +150,11 @@ jobs:
                 elif grep -q 'leaves for a person' <<< "$body"; then
                   echo "#$pr is held for a person: $(grep -o 'This update changes .*' <<< "$body")"
                   gh workflow run review-updates.yml --ref trunk
+                # This repo keeps GitHub's Allow auto-merge off, as a repo
+                # that never touched its settings does.
+                elif grep -q 'turn on \*Allow auto-merge\*' <<< "$body"; then
+                  echo "#$pr says auto-merge is not allowed here: $(grep -o 'Auto-merge could not be enabled.*' <<< "$body")"
+                  gh workflow run review-updates.yml --ref trunk
                 elif [ "$(jq -r .merged "$RUNNER_TEMP/pr.json")" != true ]; then
                   echo "::error::#$pr is neither held for a person nor set to auto-merge; its merge note: $(grep -E 'Auto-merge|Warning|merge level' <<< "$body")"
                   exit 1
