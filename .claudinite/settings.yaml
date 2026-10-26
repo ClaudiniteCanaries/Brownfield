@@ -1,7 +1,7 @@
 engine:
   channel: "staging"
-  version: "1.61022.2"
-  manifest: "sha512-J3TZdLh/WFhlYyxXGcu7eTZQlxB1E2sKfnMi9MzNKZPY61NOMDynSLfn37gLjKKLIj5vVQHiwjK6zL59cHdgdg=="
+  version: "1.61026.5"
+  manifest: "sha512-22oGKOmhZyjEfczg6z8uIDqK7ncUBr5zoUQ677gTxM9pymn+2qjVe0L1YA6xQRp6CggMyzB+kNiYXziyFN7REw=="
 packs:
   channel: "stable"
   declared:
@@ -13,3 +13,5 @@ packs:
 tasks:
   merge:
     "engine/update": "merge-safe-changes"
+  frequency:
+    "engine/update": "weekly"
