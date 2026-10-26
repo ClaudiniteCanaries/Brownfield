@@ -93,7 +93,10 @@ jobs:
           if grep -q '^  update run ' <<< "$usage"; then
             echo "cn=.claudinite/bin/cn" >> "$GITHUB_OUTPUT"
           else
-            echo "cn=npx --yes @claudinite/cli@$VERSION" >> "$GITHUB_OUTPUT"
+            # The package's own bin runs the member's pinned engine, so run
+            # the engine the package names instead.
+            (cd "$RUNNER_TEMP" && npm pack -q "@claudinite/cli@$VERSION" >/dev/null && tar xzf "claudinite-cli-$VERSION.tgz")
+            echo "cn=$(sh "$RUNNER_TEMP/package/launch" --from-package "$RUNNER_TEMP/package")" >> "$GITHUB_OUTPUT"
           fi
       - name: update through the installer
         env:
