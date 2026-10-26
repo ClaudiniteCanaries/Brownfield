@@ -1,0 +1,7 @@
+{
+  "version": "1",
+  "ruleRoutingGuidance": {
+    "belongs": "How amounts, rounding and invoice totals are computed in this library",
+    "excludes": "Claudinite itself, CI and repository settings"
+  }
+}

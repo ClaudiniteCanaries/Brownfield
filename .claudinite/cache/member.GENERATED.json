@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "settings": {
+    "path": ".claudinite/settings.yaml",
+    "format": "yaml"
+  },
+  "engine": {
+    "package": "@claudinite/cli",
+    "version": "1.61022.2",
+    "channel": "staging"
+  },
+  "packs": {
+    "channel": "stable",
+    "declared": [
+      {
+        "id": "basics"
+      },
+      {
+        "id": "claudinite"
+      },
+      {
+        "id": "git-github"
+      },
+      {
+        "id": "local/invoicing"
+      }
+    ]
+  },
+  "dormant": false,
+  "held": {
+    "basics": "1.61009.1",
+    "git-github": "1.61013.1"
+  }
+}

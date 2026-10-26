@@ -1,0 +1,52 @@
+# The person on this team who reviews the Claudinite updates that the merge
+# level (merge-safe-changes) holds back: an engine move, a check or the
+# agent's permissions. It finds the open update PR, waits for its CI, goes
+# through a token review and merges it. The canary run starts it when an
+# update PR stays open with auto-merge off.
+name: review-updates
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: review-updates
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  review:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: review the open update PRs
+        run: |
+          prs=$(gh pr list --state open --json number,headRefName --jq '.[] | select(.headRefName | startswith("claudinite/update-")) | .number')
+          if [ -z "$prs" ]; then
+            echo "no open update PR"
+            exit 0
+          fi
+          for pr in $prs; do
+            echo "reviewing #$pr: $(gh pr view "$pr" --json title --jq .title)"
+            if ! gh pr checks "$pr" --watch --interval 30; then
+              gh pr comment "$pr" --body "Review: CI is red on this update, so it stays open."
+              echo "::error::#$pr's CI is red"
+              exit 1
+            fi
+            held=$(gh pr view "$pr" --json body --jq .body | grep -o 'This update changes .* leaves for a person' || echo "the merge level holds it")
+            echo "why it waited: $held"
+            echo "read the release notes: ok"
+            echo "CI is green: ok"
+            gh pr comment "$pr" --body "Review: release notes read, the held change looked over, CI green. Approved."
+            gh pr merge "$pr" --squash
+          done

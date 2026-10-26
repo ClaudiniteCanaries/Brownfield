@@ -1,0 +1,15 @@
+engine:
+  channel: "staging"
+  version: "1.61022.2"
+  manifest: "sha512-J3TZdLh/WFhlYyxXGcu7eTZQlxB1E2sKfnMi9MzNKZPY61NOMDynSLfn37gLjKKLIj5vVQHiwjK6zL59cHdgdg=="
+packs:
+  channel: "stable"
+  declared:
+    - "basics"
+    - "claudinite"
+    - "git-github"
+    - id: "invoicing"
+      source: "local"
+tasks:
+  merge:
+    "engine/update": "merge-safe-changes"
