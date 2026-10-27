@@ -9,7 +9,8 @@
 # when nothing in it needs a person, else by review-updates, which plays the
 # reviewer. Then cn selftest --repo passes on the new trunk and cn check
 # world reports no finding, deprecations aside, that it did not report
-# before the update. When it fails, the report job opens a release-blocker
+# before the update. The growth job then plays the session history scenarios
+# of a team that learns inside each session (S-07). When it fails, the report job opens a release-blocker
 # issue naming the version in this repo, or comments on the one already
 # open, which holds the release back from promotion to stable.
 name: canary
@@ -224,8 +225,151 @@ jobs:
             exit 1
           fi
 
-  report:
+  # S-07. A team member on a private repo that learns inside each session and
+  # keeps no history (growthInSession, sessionHistory: none), and a throwaway
+  # branch that grows nothing at all (noGrowth). The scheduler runs here are
+  # dry runs, so no item is filed and nothing is closed; the executor runs
+  # are real, to prove the environment gate on this repo's default branch.
+  growth:
+    name: S-07 growth in session
     needs: canary
+    if: ${{ !cancelled() && needs.canary.result != 'skipped' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      actions: write
+      contents: write
+      issues: read
+      pull-requests: read
+    env:
+      VERSION: ${{ inputs.version }}
+      GH_TOKEN: ${{ github.token }}
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: trunk
+          fetch-depth: 0
+          persist-credentials: true
+      - name: download the engine trunk pins
+        run: |
+          pinned=$({ npx --yes @claudinite/setup@1.0.1 >&2 && .claudinite/bin/cn version; } | sed -n 1p)
+          if [ "$pinned" != "$VERSION" ]; then
+            echo "::error::trunk pins $pinned, not $VERSION: the update did not land"
+            exit 1
+          fi
+      - name: S-07 the settings validate
+        run: |
+          grep -q '^  mode: growthInSession$' .claudinite/settings.yaml
+          grep -q '^  sessionHistory: none$' .claudinite/settings.yaml
+          .claudinite/bin/cn verify
+      - name: S-07 a session end writes no branch
+        run: |
+          git ls-remote --heads origin | sed 's/.*refs\/heads\///' | sort > "$RUNNER_TEMP/branches-before"
+          printf '{"hook_event_name":"SessionEnd","session_id":"canary-brownfield-%s","transcript_path":"%s","cwd":"%s"}' \
+            "$VERSION" "$PWD/.claudinite/canary-fixtures/session.jsonl" "$PWD" \
+            | .claudinite/bin/cn hook session-end | tee "$RUNNER_TEMP/session-end.txt"
+          grep -q 'growth.mode growthInSession keeps no session history' "$RUNNER_TEMP/session-end.txt" || {
+            echo "::error::the session end did not say it stored nothing because growth.mode is growthInSession"
+            exit 1
+          }
+          git ls-remote --heads origin | sed 's/.*refs\/heads\///' | sort | diff "$RUNNER_TEMP/branches-before" - || {
+            echo "::error::the session end changed the branches of this repository"
+            exit 1
+          }
+          decision=$(.claudinite/bin/cn growth from-session --decide)
+          echo "from-session: $decision"
+          case $decision in
+            run*) ;;
+            *)
+              echo "::error::growthInSession should run growth-from-session, but the decision is: $decision"
+              exit 1 ;;
+          esac
+      - name: S-07 nightly growth from pull requests and issues still files its item
+        env:
+          CLAUDINITE_WAKE: claudinite/growth-extract
+        run: |
+          .claudinite/bin/cn schedule run --dry-run | tee "$RUNNER_TEMP/schedule.txt"
+          grep -q 'would create "\[claudinite-work\] claudinite/growth-extract"' "$RUNNER_TEMP/schedule.txt" || {
+            echo "::error::the scheduler would not file claudinite/growth-extract under growthInSession"
+            exit 1
+          }
+      - name: S-07 a throwaway branch on noGrowth plans no growth task and pushes nothing
+        run: |
+          git switch -q -c "canary/$VERSION-no-growth"
+          sed -i 's/^  mode: growthInSession$/  mode: noGrowth/' .claudinite/settings.yaml
+          grep -q '^  mode: noGrowth$' .claudinite/settings.yaml
+          .claudinite/bin/cn verify
+          CLAUDINITE_WAKE= .claudinite/bin/cn schedule run --dry-run | tee "$RUNNER_TEMP/schedule.txt"
+          if grep -E 'asked claudinite/growth-|claudinite/growth-[a-z]+"' "$RUNNER_TEMP/schedule.txt"; then
+            echo "::error::the scheduler planned a growth task on noGrowth"
+            exit 1
+          fi
+          decision=$(.claudinite/bin/cn growth from-session --decide)
+          echo "from-session: $decision"
+          case $decision in
+            skip*) ;;
+            *)
+              echo "::error::noGrowth should skip growth-from-session, but the decision is: $decision"
+              exit 1 ;;
+          esac
+          git ls-remote --heads origin | sed 's/.*refs\/heads\///' | sort | diff "$RUNNER_TEMP/branches-before" - || {
+            echo "::error::a branch appeared or went while the throwaway branch was tested"
+            exit 1
+          }
+          git switch -q --detach origin/trunk
+      # The environment only trunk may use is named by the executor job. The
+      # run from trunk gets through it, the run from any other branch does not.
+      - name: S-07 the executor runs from trunk inside the environment and not from another branch
+        run: |
+          run_of() {
+            # $1 ref, $2 the time before dispatch; prints the id of the new run
+            for _ in $(seq 30); do
+              id=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/claudinite-executor.yml/runs?event=workflow_dispatch&branch=$1&created=%3E%3D$2&per_page=5" \
+                --jq '.workflow_runs[0].id // empty')
+              [ -n "$id" ] && { echo "$id"; return 0; }
+              sleep 10
+            done
+            return 1
+          }
+          finished() {
+            deadline=$((SECONDS + 40 * 60))
+            until [ "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$1" --jq .status)" = completed ]; do
+              if [ "$SECONDS" -ge "$deadline" ]; then
+                echo "::error::the deadline passed before executor run $1 finished"
+                exit 1
+              fi
+              sleep 20
+            done
+          }
+          started=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          gh workflow run claudinite-executor.yml --repo "$GITHUB_REPOSITORY" --ref trunk
+          id=$(run_of trunk "$started") || { echo "::error::the executor run from trunk never appeared"; exit 1; }
+          finished "$id"
+          conclusion=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$id" --jq .conclusion)
+          if [ "$conclusion" != success ]; then
+            echo "::error::the executor run from trunk concluded $conclusion: https://github.com/$GITHUB_REPOSITORY/actions/runs/$id"
+            exit 1
+          fi
+          echo "the executor run from trunk succeeded: $id"
+          branch="canary/$VERSION-environment"
+          git push -q origin "origin/trunk:refs/heads/$branch"
+          trap 'git push -q origin --delete "$branch" || true' EXIT
+          started=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          gh workflow run claudinite-executor.yml --repo "$GITHUB_REPOSITORY" --ref "$branch"
+          other=$(run_of "$branch" "$started") || { echo "::error::the executor run from $branch never appeared"; exit 1; }
+          finished "$other"
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$other/jobs" > "$RUNNER_TEMP/jobs.json"
+          conclusion=$(jq -r '.jobs[] | select(.name == "execute") | .conclusion' "$RUNNER_TEMP/jobs.json")
+          ran=$(jq '[.jobs[] | select(.name == "execute") | .steps[]? | select(.conclusion == "success")] | length' "$RUNNER_TEMP/jobs.json")
+          if [ "$conclusion" = success ] || [ "$ran" != 0 ]; then
+            echo "::error::the executor run from $branch got past the environment's branch rule: job $conclusion, $ran step(s) ran"
+            exit 1
+          fi
+          echo "the executor run from $branch was refused: job $conclusion, no step ran"
+
+  report:
+    needs: [canary, growth]
     if: failure()
     runs-on: ubuntu-24.04
     permissions:
