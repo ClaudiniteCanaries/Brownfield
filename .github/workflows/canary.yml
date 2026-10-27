@@ -269,7 +269,7 @@ jobs:
           printf '{"hook_event_name":"SessionEnd","session_id":"canary-brownfield-%s","transcript_path":"%s","cwd":"%s"}' \
             "$VERSION" "$PWD/.claudinite/canary-fixtures/session.jsonl" "$PWD" \
             | .claudinite/bin/cn hook session-end | tee "$RUNNER_TEMP/session-end.txt"
-          grep -q 'growth.mode growthInSession keeps no session history' "$RUNNER_TEMP/session-end.txt" || {
+          grep -q 'nothing captured: growth.mode is growthInSession' "$RUNNER_TEMP/session-end.txt" || {
             echo "::error::the session end did not say it stored nothing because growth.mode is growthInSession"
             exit 1
           }
