@@ -268,7 +268,7 @@ jobs:
           git ls-remote --heads origin | sed 's/.*refs\/heads\///' | sort > "$RUNNER_TEMP/branches-before"
           printf '{"hook_event_name":"SessionEnd","session_id":"canary-brownfield-%s","transcript_path":"%s","cwd":"%s"}' \
             "$VERSION" "$PWD/.claudinite/canary-fixtures/session.jsonl" "$PWD" \
-            | .claudinite/bin/cn hook session-end | tee "$RUNNER_TEMP/session-end.txt"
+            | .claudinite/bin/cn hook session-end 2>&1 | tee "$RUNNER_TEMP/session-end.txt"
           grep -q 'nothing captured: growth.mode is growthInSession' "$RUNNER_TEMP/session-end.txt" || {
             echo "::error::the session end did not say it stored nothing because growth.mode is growthInSession"
             exit 1
