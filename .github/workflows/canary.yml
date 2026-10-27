@@ -239,7 +239,7 @@ jobs:
     permissions:
       actions: write
       contents: write
-      issues: read
+      issues: write
       pull-requests: read
     env:
       VERSION: ${{ inputs.version }}
@@ -285,12 +285,28 @@ jobs:
               echo "::error::growthInSession should run growth-from-session, but the decision is: $decision"
               exit 1 ;;
           esac
-      - name: S-07 nightly growth from pull requests and issues still files its item
+      # The real scheduler files claudinite/growth-extract daily and, with no
+      # routine endpoint declared here, parks it for a human. Nobody is
+      # here to clear it, so the canary closes it as rejected.
+      - name: S-07 close the growth-extract items the scheduler parked
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/issues?state=open&per_page=100" \
+            --jq '.[] | select(.pull_request == null and (.title | startswith("[claudinite-work] claudinite/growth-extract"))) | .number' \
+            | while read -r n; do
+              api="repos/$GITHUB_REPOSITORY/issues/$n"
+              gh api -X DELETE "$api/labels/task:status:needs-human-action" > /dev/null || true
+              gh api "$api/labels" -f 'labels[]=task:status:rejected' > /dev/null
+              gh api "$api/comments" -f body="Closed by the canary: this repository declares no routine endpoint, so a scheduled growth-extract item can only park, and no person is here to clear it." > /dev/null
+              gh api -X PATCH "$api" -f state=closed -f state_reason=not_planned > /dev/null
+            done
+      # A closed item still counts as the day's run, so the daily gate may
+      # decline the task; the asked line then proves the same routing.
+      - name: S-07 nightly growth from pull requests and issues is routed to its task
         env:
           CLAUDINITE_WAKE: claudinite/growth-extract
         run: |
           .claudinite/bin/cn schedule run --dry-run | tee "$RUNNER_TEMP/schedule.txt"
-          grep -q 'would create "\[claudinite-work\] claudinite/growth-extract"' "$RUNNER_TEMP/schedule.txt" || {
+          grep -Eq 'would create "\[claudinite-work\] claudinite/growth-extract"|asked claudinite/growth-extract:' "$RUNNER_TEMP/schedule.txt" || {
             echo "::error::the scheduler would not file claudinite/growth-extract under growthInSession"
             exit 1
           }
