@@ -15,3 +15,6 @@ tasks:
     "engine/update": "merge-safe-changes"
   frequency:
     "engine/update": "weekly"
+growth:
+  mode: growthInSession
+  sessionHistory: none
