@@ -6,7 +6,7 @@
   },
   "engine": {
     "package": "@claudinite/cli",
-    "version": "1.61027.8",
+    "version": "1.61102.1",
     "channel": "staging"
   },
   "packs": {
@@ -29,6 +29,6 @@
   "dormant": false,
   "held": {
     "basics": "1.61009.1",
-    "git-github": "1.61013.1"
+    "git-github": "1.61027.1"
   }
 }
