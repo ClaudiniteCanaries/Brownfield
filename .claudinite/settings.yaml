@@ -11,6 +11,9 @@ packs:
     - id: "invoicing"
       source: "local"
 tasks:
+  routines:
+    default:
+      url: "https://api.anthropic.com/v1/claude_code/routines/trig_01V4SPk2d5VvtK6Gh38JyTYA"
   merge:
     "engine/update": "merge-safe-changes"
   frequency:
